@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "grillo-parlante",
-    "slug": "grillo-parlante",
+    "name": "wordskid",
+    "slug": "wordskid",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
