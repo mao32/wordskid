@@ -84,20 +84,36 @@ export default function App() {
     Speech.speak(text.toLowerCase(), { language: 'it-IT', pitch, rate });
   };
 
-  // Scandisce lettera per lettera con pausa poi dice il messaggio finale
-  const speakScandito = (word: string, finalMessage: string) => {
+  // Scandisce lettera per lettera, poi parola intera, poi Bravissimo!
+  const speakScandito = (word: string, finalMessage: string, onComplete: () => void) => {
     const letters = word.split('');
-    // Expo Speech mette in coda le chiamate sequenzialmente
-    letters.forEach((letter, i) => {
+    
+    // 1. Lettera per lettera in coda
+    letters.forEach((letter) => {
       Speech.speak(letter.toLowerCase(), {
         language: 'it-IT',
         pitch: 1.5,
-        rate: 0.5, // molto lento, scandito
+        rate: 0.5,
       });
     });
-    // Aggiunge una "pausa" silenziosa e poi il messaggio finale
-    Speech.speak('...', { language: 'it-IT', pitch: 1.5, rate: 0.3 });
-    Speech.speak(finalMessage.toLowerCase(), { language: 'it-IT', pitch: 1.6, rate: 0.9 });
+
+    // Calcoliamo circa 600ms per ogni lettera pronunciata
+    const spellDuration = letters.length * 600;
+
+    // 2. Pausa e parola intera
+    setTimeout(() => {
+      Speech.speak(word.toLowerCase(), { language: 'it-IT', pitch: 1.4, rate: 0.8 });
+    }, spellDuration + 600); // 600ms di pausa
+
+    // 3. Pausa e "Bravissimo!"
+    setTimeout(() => {
+      Speech.speak(finalMessage.toLowerCase(), { language: 'it-IT', pitch: 1.6, rate: 0.9 });
+    }, spellDuration + 2000); // Un'altra pausa
+
+    // 4. Fine sequenza
+    setTimeout(() => {
+      onComplete();
+    }, spellDuration + 4000);
   };
 
   const initLevel = useCallback(() => {
@@ -147,16 +163,14 @@ export default function App() {
         if (newInput.length === currentLevel.word.length) {
           setIsWon(true);
           setTimeout(() => {
-            speakScandito(currentLevel.word, 'Bravissimo!');
-          }, 800); // Aspetta che finisca la pronuncia della lettera
-          
-          setTimeout(() => {
-            if (levelIndex < LEVELS.length - 1) {
-              setLevelIndex(levelIndex + 1);
-            } else {
-              setLevelIndex(0); // Ricomincia
-            }
-          }, 4500);
+            speakScandito(currentLevel.word, 'Bravissimo!', () => {
+              if (levelIndex < LEVELS.length - 1) {
+                setLevelIndex(levelIndex + 1);
+              } else {
+                setLevelIndex(0); // Ricomincia
+              }
+            });
+          }, 800); // Aspetta che finisca la pronuncia dell'ultima lettera inserita
         }
         setIsProcessing(false);
       } else {
@@ -186,15 +200,14 @@ export default function App() {
             if (newInput.length === currentLevel.word.length) {
               setIsWon(true);
               setTimeout(() => {
-                speakScandito(currentLevel.word, 'Bravissimo!');
+                speakScandito(currentLevel.word, 'Bravissimo!', () => {
+                  if (levelIndex < LEVELS.length - 1) {
+                    setLevelIndex(levelIndex + 1);
+                  } else {
+                    setLevelIndex(0);
+                  }
+                });
               }, 800);
-              setTimeout(() => {
-                if (levelIndex < LEVELS.length - 1) {
-                  setLevelIndex(levelIndex + 1);
-                } else {
-                  setLevelIndex(0);
-                }
-              }, 4500);
             }
             setIsProcessing(false);
           }, 1800);
