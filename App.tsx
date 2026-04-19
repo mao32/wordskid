@@ -136,9 +136,11 @@ export default function App() {
       const newInput = [...userInput, { letter, status: isCorrect ? 'correct' : 'wrong' as const }];
       setUserInput(newInput);
       
+      // Pronuncia sempre la lettera appena premuta
+      speakVoice(letter, 1.4, 1.0);
+      
       if (isCorrect) {
         playSuccessSound();
-        speakVoice(letter, 1.4, 1.0);
         setConsecutiveErrors(0);
 
         // Controllo vittoria
@@ -162,11 +164,11 @@ export default function App() {
         const newErrors = consecutiveErrors + 1;
         setConsecutiveErrors(newErrors);
 
-        // Suggerisce la sillaba dopo un breve istante per far sentire il buzzer
+        // Suggerisce la sillaba dopo un breve istante per far sentire la lettera e il buzzer
         setTimeout(() => {
           const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, userInput.length);
           speakVoice(syllable, 1.4, 0.7);
-        }, 500);
+        }, 800);
 
         if (newErrors >= 3) {
           // Dopo 3 errori, riempie in automatico la lettera corretta
