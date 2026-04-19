@@ -82,6 +82,22 @@ export default function App() {
     Speech.speak(text.toLowerCase(), { language: 'it-IT', pitch, rate });
   };
 
+  // Scandisce lettera per lettera con pausa poi dice il messaggio finale
+  const speakScandito = (word: string, finalMessage: string) => {
+    const letters = word.split('');
+    // Expo Speech mette in coda le chiamate sequenzialmente
+    letters.forEach((letter, i) => {
+      Speech.speak(letter.toLowerCase(), {
+        language: 'it-IT',
+        pitch: 1.5,
+        rate: 0.5, // molto lento, scandito
+      });
+    });
+    // Aggiunge una "pausa" silenziosa e poi il messaggio finale
+    Speech.speak('...', { language: 'it-IT', pitch: 1.5, rate: 0.3 });
+    Speech.speak(finalMessage.toLowerCase(), { language: 'it-IT', pitch: 1.6, rate: 0.9 });
+  };
+
   const initLevel = useCallback(() => {
     setUserInput([]);
     setIsWon(false);
@@ -128,8 +144,8 @@ export default function App() {
         if (allCorrect) {
           setIsWon(true);
           playSuccessSound();
-          // Dice "Bravissimo!" e ripete la parola
-          speakVoice(`Bravissimo! ${currentLevel.word}`, 1.5, 0.9);
+          // Prima scandisce lettera per lettera, poi pausa, poi Bravissimo!
+          speakScandito(currentLevel.word, 'Bravissimo!');
           
           setTimeout(() => {
             if (levelIndex < LEVELS.length - 1) {
