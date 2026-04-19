@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView } from 'react-native';
 import * as Speech from 'expo-speech';
-import { Volume2, Delete } from 'lucide-react-native';
+import { Audio } from 'expo-av';
+import { Volume2, Delete, Lightbulb } from 'lucide-react-native';
 
 const LEVELS = [
-  { word: "GATTO", emoji: "🐱" },
-  { word: "CANE", emoji: "🐶" },
-  { word: "SOLE", emoji: "☀️" },
-  { word: "MELA", emoji: "🍎" },
-  { word: "LUNA", emoji: "🌙" },
+  { word: "GATTO", emoji: "🐱", syllables: ["GAT", "TO"] },
+  { word: "CANE", emoji: "🐶", syllables: ["CA", "NE"] },
+  { word: "SOLE", emoji: "☀️", syllables: ["SO", "LE"] },
+  { word: "MELA", emoji: "🍎", syllables: ["ME", "LA"] },
+  { word: "LUNA", emoji: "🌙", syllables: ["LU", "NA"] },
 ];
 
 const shuffleArray = (array: string[]) => {
@@ -20,13 +21,66 @@ const shuffleArray = (array: string[]) => {
   return newArr;
 };
 
+// Funzione helper per ottenere la sillaba corrente
+const getCurrentSyllable = (word: string, syllables: string[], currentIndex: number) => {
+  let lengthSoFar = 0;
+  for (const syl of syllables) {
+    if (currentIndex >= lengthSoFar && currentIndex < lengthSoFar + syl.length) {
+      return syl;
+    }
+    lengthSoFar += syl.length;
+  }
+  return word;
+};
+
+type UserInputData = {
+  letter: string;
+  status: 'correct' | 'wrong' | 'pending';
+};
+
 export default function App() {
   const [levelIndex, setLevelIndex] = useState(0);
-  const [userInput, setUserInput] = useState<string[]>([]);
+  const [userInput, setUserInput] = useState<UserInputData[]>([]);
   const [shuffledLetters, setShuffledLetters] = useState<string[]>([]);
   const [isWon, setIsWon] = useState(false);
 
+  const [soundSuccess, setSoundSuccess] = useState<Audio.Sound>();
+  const [soundWrong, setSoundWrong] = useState<Audio.Sound>();
+
   const currentLevel = LEVELS[levelIndex];
+
+  // Caricamento dei suoni
+  useEffect(() => {
+    async function loadSounds() {
+      try {
+        const { sound: s1 } = await Audio.Sound.createAsync(require('./assets/success.wav'));
+        const { sound: s2 } = await Audio.Sound.createAsync(require('./assets/wrong.wav'));
+        setSoundSuccess(s1);
+        setSoundWrong(s2);
+      } catch (error) {
+        console.log("Errore caricamento suoni:", error);
+      }
+    }
+    loadSounds();
+    return () => {
+      soundSuccess?.unloadAsync();
+      soundWrong?.unloadAsync();
+    };
+  }, []);
+
+  const playSuccessSound = async () => {
+    try { await soundSuccess?.replayAsync(); } catch (e) {}
+  };
+
+  const playWrongSound = async () => {
+    try { await soundWrong?.replayAsync(); } catch (e) {}
+  };
+
+  // Funzione unificata per la voce per garantire lo stesso tono
+  const speakVoice = (text: string, pitch = 1.3, rate = 0.8) => {
+    // text.toLowerCase() evita che dica "A maiuscolo"
+    Speech.speak(text.toLowerCase(), { language: 'it-IT', pitch, rate });
+  };
 
   const initLevel = useCallback(() => {
     setUserInput([]);
@@ -34,8 +88,8 @@ export default function App() {
     const letters = currentLevel.word.split('');
     setShuffledLetters(shuffleArray(letters));
     
-    // Pronuncia la parola appena caricato il livello
-    Speech.speak(currentLevel.word, { language: 'it-IT', rate: 0.8 });
+    // Pronuncia la parola appena caricato il livello con entusiasmo
+    speakVoice(currentLevel.word, 1.3, 0.85);
   }, [currentLevel]);
 
   useEffect(() => {
@@ -43,31 +97,50 @@ export default function App() {
   }, [initLevel]);
 
   const handleSpeak = () => {
-    Speech.speak(currentLevel.word, { language: 'it-IT', rate: 0.8 });
+    speakVoice(currentLevel.word, 1.3, 0.85);
+  };
+
+  const handleHint = () => {
+    if (userInput.length < currentLevel.word.length && !isWon) {
+      const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, userInput.length);
+      speakVoice(syllable, 1.4, 0.7); // Parla più lentamente per l'indizio
+    }
   };
 
   const handleLetterPress = (letter: string) => {
     if (userInput.length < currentLevel.word.length && !isWon) {
-      const newInput = [...userInput, letter];
+      const targetLetter = currentLevel.word[userInput.length];
+      const isCorrect = letter === targetLetter;
+      
+      const newInput = [...userInput, { letter, status: isCorrect ? 'correct' : 'wrong' as const }];
       setUserInput(newInput);
       
-      // Pronuncia la lettera toccata (feedback)
-      Speech.speak(letter, { language: 'it-IT', rate: 1.0 });
+      if (isCorrect) {
+        playSuccessSound();
+        speakVoice(letter, 1.4, 1.0);
+      } else {
+        playWrongSound();
+      }
 
       // Controllo vittoria
-      if (newInput.join('') === currentLevel.word) {
-        setIsWon(true);
-        Speech.speak("Bravissimo!", { language: 'it-IT', rate: 1.0 });
-        setTimeout(() => {
-          if (levelIndex < LEVELS.length - 1) {
-            setLevelIndex(levelIndex + 1);
-          } else {
-            setLevelIndex(0); // Ricomincia dal primo per ora
-          }
-        }, 2500);
-      } else if (newInput.length === currentLevel.word.length) {
-        // Ha riempito tutte le caselle ma la parola è sbagliata
-        Speech.speak("Riprova", { language: 'it-IT', rate: 1.0 });
+      if (newInput.length === currentLevel.word.length) {
+        const allCorrect = newInput.every(i => i.status === 'correct');
+        if (allCorrect) {
+          setIsWon(true);
+          playSuccessSound();
+          // Dice "Bravissimo!" e ripete la parola
+          speakVoice(`Bravissimo! ${currentLevel.word}`, 1.5, 0.9);
+          
+          setTimeout(() => {
+            if (levelIndex < LEVELS.length - 1) {
+              setLevelIndex(levelIndex + 1);
+            } else {
+              setLevelIndex(0); // Ricomincia
+            }
+          }, 3500);
+        } else {
+          speakVoice("Oh no, c'è un errore!", 1.1, 0.9);
+        }
       }
     }
   };
@@ -80,7 +153,12 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>WordsKid</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>WordsKid</Text>
+        <TouchableOpacity style={styles.hintButton} onPress={handleHint}>
+          <Lightbulb size={28} color="#FF9800" />
+        </TouchableOpacity>
+      </View>
       
       <View style={styles.imageContainer}>
         <Text style={styles.emoji}>{currentLevel.emoji}</Text>
@@ -90,18 +168,31 @@ export default function App() {
       </View>
 
       <View style={styles.boxesContainer}>
-        {Array.from({ length: currentLevel.word.length }).map((_, index) => (
-          <View 
-            key={index} 
-            style={[
-              styles.box, 
-              isWon && styles.boxWon,
-              userInput.length > index && styles.boxFilled
-            ]}
-          >
-            <Text style={styles.boxText}>{userInput[index] || ''}</Text>
-          </View>
-        ))}
+        {Array.from({ length: currentLevel.word.length }).map((_, index) => {
+          const inputItem = userInput[index];
+          let boxStateStyle = {};
+          if (inputItem) {
+            boxStateStyle = inputItem.status === 'correct' ? styles.boxCorrect : styles.boxWrong;
+          }
+
+          return (
+            <View 
+              key={index} 
+              style={[
+                styles.box, 
+                boxStateStyle,
+                isWon && styles.boxWon
+              ]}
+            >
+              <Text style={[
+                styles.boxText,
+                inputItem?.status === 'wrong' && styles.boxTextWrong
+              ]}>
+                {inputItem?.letter || ''}
+              </Text>
+            </View>
+          );
+        })}
       </View>
 
       <View style={styles.keyboard}>
@@ -131,18 +222,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F0F8FF',
     alignItems: 'center',
-    paddingTop: 80,
+    paddingTop: 60,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginBottom: 20,
+    position: 'relative',
   },
   title: {
     fontSize: 36,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 40,
+  },
+  hintButton: {
+    position: 'absolute',
+    right: 30,
+    backgroundColor: '#FFF3E0',
+    padding: 10,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#FF9800',
   },
   imageContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 60,
+    marginBottom: 50,
     position: 'relative',
   },
   emoji: {
@@ -163,7 +270,7 @@ const styles = StyleSheet.create({
   },
   boxesContainer: {
     flexDirection: 'row',
-    marginBottom: 60,
+    marginBottom: 50,
     gap: 12,
   },
   box: {
@@ -176,8 +283,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
   },
-  boxFilled: {
-    borderColor: '#4DA8DA',
+  boxCorrect: {
+    borderColor: '#4CAF50',
+    backgroundColor: '#F1F8E9',
+  },
+  boxWrong: {
+    borderColor: '#F44336',
+    backgroundColor: '#FFEBEE',
   },
   boxWon: {
     borderColor: '#4CAF50',
@@ -187,6 +299,9 @@ const styles = StyleSheet.create({
     fontSize: 40,
     fontWeight: 'bold',
     color: '#333',
+  },
+  boxTextWrong: {
+    color: '#F44336',
   },
   keyboard: {
     flexDirection: 'row',
@@ -230,7 +345,7 @@ const styles = StyleSheet.create({
     fontSize: 42,
     fontWeight: 'bold',
     color: '#4CAF50',
-    marginTop: 40,
+    marginTop: 30,
     textShadowColor: 'rgba(0, 0, 0, 0.1)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
