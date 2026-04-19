@@ -43,6 +43,8 @@ export default function App() {
   const [userInput, setUserInput] = useState<UserInputData[]>([]);
   const [shuffledLetters, setShuffledLetters] = useState<string[]>([]);
   const [isWon, setIsWon] = useState(false);
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const [soundSuccess, setSoundSuccess] = useState<Audio.Sound>();
   const [soundWrong, setSoundWrong] = useState<Audio.Sound>();
@@ -101,6 +103,8 @@ export default function App() {
   const initLevel = useCallback(() => {
     setUserInput([]);
     setIsWon(false);
+    setConsecutiveErrors(0);
+    setIsProcessing(false);
     const letters = currentLevel.word.split('');
     setShuffledLetters(shuffleArray(letters));
     
@@ -124,7 +128,8 @@ export default function App() {
   };
 
   const handleLetterPress = (letter: string) => {
-    if (userInput.length < currentLevel.word.length && !isWon) {
+    if (userInput.length < currentLevel.word.length && !isWon && !isProcessing) {
+      setIsProcessing(true);
       const targetLetter = currentLevel.word[userInput.length];
       const isCorrect = letter === targetLetter;
       
@@ -134,18 +139,14 @@ export default function App() {
       if (isCorrect) {
         playSuccessSound();
         speakVoice(letter, 1.4, 1.0);
-      } else {
-        playWrongSound();
-      }
+        setConsecutiveErrors(0);
 
-      // Controllo vittoria
-      if (newInput.length === currentLevel.word.length) {
-        const allCorrect = newInput.every(i => i.status === 'correct');
-        if (allCorrect) {
+        // Controllo vittoria
+        if (newInput.length === currentLevel.word.length) {
           setIsWon(true);
-          playSuccessSound();
-          // Prima scandisce lettera per lettera, poi pausa, poi Bravissimo!
-          speakScandito(currentLevel.word, 'Bravissimo!');
+          setTimeout(() => {
+            speakScandito(currentLevel.word, 'Bravissimo!');
+          }, 800); // Aspetta che finisca la pronuncia della lettera
           
           setTimeout(() => {
             if (levelIndex < LEVELS.length - 1) {
@@ -153,9 +154,59 @@ export default function App() {
             } else {
               setLevelIndex(0); // Ricomincia
             }
-          }, 3500);
+          }, 4500);
+        }
+        setIsProcessing(false);
+      } else {
+        playWrongSound();
+        const newErrors = consecutiveErrors + 1;
+        setConsecutiveErrors(newErrors);
+
+        // Suggerisce la sillaba dopo un breve istante per far sentire il buzzer
+        setTimeout(() => {
+          const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, userInput.length);
+          speakVoice(syllable, 1.4, 0.7);
+        }, 500);
+
+        if (newErrors >= 3) {
+          // Dopo 3 errori, riempie in automatico la lettera corretta
+          setTimeout(() => {
+            setUserInput(prev => {
+              const copy = [...prev];
+              copy[copy.length - 1] = { letter: targetLetter, status: 'correct' };
+              return copy;
+            });
+            playSuccessSound();
+            speakVoice(targetLetter, 1.4, 1.0);
+            setConsecutiveErrors(0);
+
+            // Controllo vittoria anche dopo l'autocompletamento
+            if (newInput.length === currentLevel.word.length) {
+              setIsWon(true);
+              setTimeout(() => {
+                speakScandito(currentLevel.word, 'Bravissimo!');
+              }, 800);
+              setTimeout(() => {
+                if (levelIndex < LEVELS.length - 1) {
+                  setLevelIndex(levelIndex + 1);
+                } else {
+                  setLevelIndex(0);
+                }
+              }, 4500);
+            }
+            setIsProcessing(false);
+          }, 1800);
         } else {
-          speakVoice("Oh no, c'è un errore!", 1.1, 0.9);
+          // Rimuove la lettera sbagliata in automatico dopo 1.5 secondi
+          setTimeout(() => {
+            setUserInput(prev => {
+              if (prev.length > 0 && prev[prev.length - 1].status === 'wrong') {
+                return prev.slice(0, -1);
+              }
+              return prev;
+            });
+            setIsProcessing(false);
+          }, 1500);
         }
       }
     }
