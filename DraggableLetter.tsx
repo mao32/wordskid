@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 
 interface DraggableLetterProps {
   letter: string;
   disabled: boolean;
-  onDragRelease: (letter: string, moveX: number, moveY: number, resetPosition: () => void) => void;
+  onDragRelease: (letter: string, moveX: number, moveY: number, resetPosition: (instant?: boolean) => void) => void;
   onPressIn?: () => void;
 }
 
@@ -32,12 +32,16 @@ export default function DraggableLetter({ letter, disabled, onDragRelease, onPre
         setIsDragging(false);
         pan.flattenOffset();
 
-        const resetPosition = () => {
-          Animated.spring(pan, {
-            toValue: { x: 0, y: 0 },
-            friction: 5,
-            useNativeDriver: false,
-          }).start();
+        const resetPosition = (instant = false) => {
+          if (instant) {
+            pan.setValue({ x: 0, y: 0 });
+          } else {
+            Animated.spring(pan, {
+              toValue: { x: 0, y: 0 },
+              friction: 5,
+              useNativeDriver: false,
+            }).start();
+          }
         };
 
         // Call the parent to determine if it was dropped in a valid zone

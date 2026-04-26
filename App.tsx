@@ -44,7 +44,6 @@ export default function App() {
   const [levelIndex, setLevelIndex] = useState(0);
   const [userInput, setUserInput] = useState<(UserInputData | null)[]>([]);
   const [shuffledLetters, setShuffledLetters] = useState<string[]>([]);
-  const [usedIndices, setUsedIndices] = useState<number[]>([]);
   const [isWon, setIsWon] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -118,7 +117,6 @@ export default function App() {
     setConsecutiveErrors(0);
     setIsProcessing(false);
     setShuffledLetters(shuffleArray(letters));
-    setUsedIndices([]);
     
     speakVoice(currentLevel.word, 1.3, 0.85);
   }, [currentLevel]);
@@ -159,7 +157,7 @@ export default function App() {
     }
   };
 
-  const handleLetterDrop = (letter: string, keyboardIndex: number, moveX: number, moveY: number, resetPosition: () => void) => {
+  const handleLetterDrop = (letter: string, keyboardIndex: number, moveX: number, moveY: number, resetPosition: (instant?: boolean) => void) => {
     if (!isWon && !isProcessing) {
       const screenHeight = Dimensions.get('window').height;
       const screenWidth = Dimensions.get('window').width;
@@ -196,15 +194,16 @@ export default function App() {
       const newInput = [...userInput];
       newInput[droppedIndex] = { letter, status: isCorrect ? 'correct' : 'wrong', keyboardIndex };
       setUserInput(newInput);
-      setUsedIndices(prev => [...prev, keyboardIndex]);
       
       speakVoice(letter, 1.4, 1.0);
       
       if (isCorrect) {
+        resetPosition(true); // Instant reset to keyboard
         playSuccessSound();
         setConsecutiveErrors(0);
         setIsProcessing(false);
       } else {
+        resetPosition(false); // Animate back on error
         playWrongSound();
         const newErrors = consecutiveErrors + 1;
         setConsecutiveErrors(newErrors);
@@ -218,23 +217,10 @@ export default function App() {
           setTimeout(() => {
             setUserInput(prev => {
               const wrongItem = prev[droppedIndex];
-              let correctIndex: number | undefined;
-
-              setUsedIndices(u => {
-                let newU = [...u];
-                if (wrongItem && wrongItem.keyboardIndex !== undefined) {
-                  newU = newU.filter(i => i !== wrongItem.keyboardIndex);
-                }
-                const foundIdx = shuffledLetters.findIndex((l, idx) => l === targetLetter && !newU.includes(idx));
-                if (foundIdx !== -1) {
-                  correctIndex = foundIdx;
-                  newU.push(foundIdx);
-                }
-                return newU;
-              });
+              const correctIndex = shuffledLetters.findIndex((l, idx) => l === targetLetter);
 
               const copy = [...prev];
-              copy[droppedIndex] = { letter: targetLetter, status: 'correct', keyboardIndex: correctIndex };
+              copy[droppedIndex] = { letter: targetLetter, status: 'correct', keyboardIndex: correctIndex !== -1 ? correctIndex : undefined };
               return copy;
             });
             playSuccessSound();
@@ -248,9 +234,6 @@ export default function App() {
               const copy = [...prev];
               const wrongItem = copy[droppedIndex];
               if (wrongItem && wrongItem.status === 'wrong') {
-                if (wrongItem.keyboardIndex !== undefined) {
-                  setUsedIndices(u => u.filter(i => i !== wrongItem.keyboardIndex));
-                }
                 copy[droppedIndex] = null;
               }
               return copy;
@@ -268,10 +251,6 @@ export default function App() {
     if (!isWon && userInput.some(x => x !== null)) {
       const lastIndex = userInput.map((x, i) => x ? i : -1).filter(i => i !== -1).pop();
       if (lastIndex !== undefined) {
-        const lastItem = userInput[lastIndex];
-        if (lastItem && lastItem.keyboardIndex !== undefined) {
-          setUsedIndices(prev => prev.filter(i => i !== lastItem.keyboardIndex));
-        }
         const copy = [...userInput];
         copy[lastIndex] = null;
         setUserInput(copy);
@@ -325,10 +304,6 @@ export default function App() {
 
       <View style={styles.keyboard}>
         {shuffledLetters.map((letter, index) => {
-          if (usedIndices.includes(index)) {
-            return <View key={index} style={[styles.key, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]} />;
-          }
-
           return (
             <DraggableLetter
               key={index}
