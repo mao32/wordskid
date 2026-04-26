@@ -47,22 +47,6 @@ export default function App() {
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  type Layout = { x: number; y: number; width: number; height: number };
-  const [boxLayouts, setBoxLayouts] = useState<Layout[]>([]);
-  const boxRefs = useRef<(View | null)[]>([]);
-
-  const handleBoxLayout = (index: number) => {
-    setTimeout(() => {
-      boxRefs.current[index]?.measure((x, y, width, height, pageX, pageY) => {
-        setBoxLayouts(prev => {
-          const newLayouts = [...prev];
-          newLayouts[index] = { x: pageX, y: pageY, width, height };
-          return newLayouts;
-        });
-      });
-    }, 100);
-  };
-
   const [soundSuccess, setSoundSuccess] = useState<Audio.Sound>();
   const [soundWrong, setSoundWrong] = useState<Audio.Sound>();
 
@@ -140,7 +124,6 @@ export default function App() {
     setIsProcessing(false);
     const letters = currentLevel.word.split('');
     setShuffledLetters(shuffleArray(letters));
-    setBoxLayouts([]);
     
     // Pronuncia la parola appena caricato il livello con entusiasmo
     speakVoice(currentLevel.word, 1.3, 0.85);
@@ -164,23 +147,12 @@ export default function App() {
   const handleLetterDrop = (letter: string, moveX: number, moveY: number, resetPosition: () => void) => {
     if (userInput.length < currentLevel.word.length && !isWon && !isProcessing) {
       
-      const expectedIndex = userInput.length;
-      const targetBox = boxLayouts[expectedIndex];
+      const screenHeight = Dimensions.get('window').height;
+      // Consider a valid drop if dragged above the bottom 35% of the screen (i.e. into the upper area)
+      const dropZoneBottom = screenHeight * 0.65;
       
-      let droppedInTarget = false;
-      if (targetBox) {
-        const padding = 30; // Lenient drop zone
-        if (
-          moveX >= targetBox.x - padding &&
-          moveX <= targetBox.x + targetBox.width + padding &&
-          moveY >= targetBox.y - padding &&
-          moveY <= targetBox.y + targetBox.height + padding
-        ) {
-          droppedInTarget = true;
-        }
-      }
-
-      if (!droppedInTarget) {
+      if (moveY > dropZoneBottom || moveY === 0) {
+        // Not dragged high enough, or tapped without moving (moveY is 0 initially)
         resetPosition();
         return;
       }
@@ -302,8 +274,6 @@ export default function App() {
           return (
             <View 
               key={index} 
-              ref={(ref) => { boxRefs.current[index] = ref; }}
-              onLayout={() => handleBoxLayout(index)}
               style={[
                 styles.box, 
                 boxStateStyle,
