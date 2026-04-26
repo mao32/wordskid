@@ -171,13 +171,13 @@ export default function App() {
       }
 
       const wordLen = currentLevel.word.length;
-      const totalWidth = wordLen * 60 + (wordLen - 1) * 12; // box: 60, gap: 12
+      const totalWidth = wordLen * 70 + (wordLen - 1) * 12; // box: 70, gap: 12
       const startX = (screenWidth - totalWidth) / 2;
       
       let droppedIndex = -1;
       for (let i = 0; i < wordLen; i++) {
-        const boxLeft = startX + i * 72;
-        const boxRight = boxLeft + 60;
+        const boxLeft = startX + i * 82;
+        const boxRight = boxLeft + 70;
         if (moveX >= boxLeft - 20 && moveX <= boxRight + 20) {
           droppedIndex = i;
           break;
@@ -309,7 +309,8 @@ export default function App() {
             >
               <Text style={[
                 styles.boxText,
-                inputItem?.status === 'wrong' && styles.boxTextWrong
+                inputItem?.status === 'wrong' && styles.boxTextWrong,
+                inputItem?.status === 'correct' && styles.boxTextCorrect
               ]}>
                 {inputItem?.letter || ''}
               </Text>
@@ -402,18 +403,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   box: {
-    width: 60,
+    width: 70,
     height: 70,
     borderWidth: 4,
     borderColor: '#D0E1F9',
-    borderRadius: 12,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
   },
   boxCorrect: {
-    borderColor: '#4CAF50',
-    backgroundColor: '#F1F8E9',
+    borderColor: '#FF9800',
+    backgroundColor: '#FF9800',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
   boxWrong: {
     borderColor: '#F44336',
@@ -424,9 +430,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F5E9',
   },
   boxText: {
-    fontSize: 40,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#333',
+  },
+  boxTextCorrect: {
+    color: '#fff',
   },
   boxTextWrong: {
     color: '#F44336',
