@@ -11,11 +11,14 @@ interface DraggableLetterProps {
 export default function DraggableLetter({ letter, disabled, onDragRelease, onPressIn }: DraggableLetterProps) {
   const pan = useRef(new Animated.ValueXY()).current;
   const [isDragging, setIsDragging] = useState(false);
+  
+  const propsRef = useRef({ letter, disabled, onDragRelease, onPressIn });
+  propsRef.current = { letter, disabled, onDragRelease, onPressIn };
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !disabled,
-      onMoveShouldSetPanResponder: () => !disabled,
+      onStartShouldSetPanResponder: () => !propsRef.current.disabled,
+      onMoveShouldSetPanResponder: () => !propsRef.current.disabled,
       onPanResponderGrant: () => {
         pan.setOffset({
           x: (pan.x as any)._value,
@@ -23,7 +26,7 @@ export default function DraggableLetter({ letter, disabled, onDragRelease, onPre
         });
         pan.setValue({ x: 0, y: 0 });
         setIsDragging(true);
-        if (onPressIn) onPressIn();
+        if (propsRef.current.onPressIn) propsRef.current.onPressIn();
       },
       onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
         useNativeDriver: false,
@@ -45,7 +48,7 @@ export default function DraggableLetter({ letter, disabled, onDragRelease, onPre
         };
 
         // Call the parent to determine if it was dropped in a valid zone
-        onDragRelease(letter, gesture.moveX, gesture.moveY, resetPosition);
+        propsRef.current.onDragRelease(propsRef.current.letter, gesture.moveX, gesture.moveY, resetPosition);
       },
     })
   ).current;
