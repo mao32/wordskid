@@ -171,20 +171,21 @@ export default function App() {
       }
 
       const wordLen = currentLevel.word.length;
-      const totalWidth = wordLen * 70 + (wordLen - 1) * 12; // box: 70, gap: 12
+      const totalWidth = wordLen * 60 + (wordLen - 1) * 10; // box: 60, gap: 10
       const startX = (screenWidth - totalWidth) / 2;
       
+      let closestDistance = Infinity;
       let droppedIndex = -1;
+      
       for (let i = 0; i < wordLen; i++) {
-        const boxLeft = startX + i * 82;
-        const boxRight = boxLeft + 70;
-        if (moveX >= boxLeft - 20 && moveX <= boxRight + 20) {
+        const boxCenterX = startX + i * 70 + 30; // 60 + 10 gap, center is at +30
+        const distance = Math.abs(moveX - boxCenterX);
+        if (distance < closestDistance) {
+          closestDistance = distance;
           droppedIndex = i;
-          break;
         }
       }
-
-      if (droppedIndex === -1 || userInput[droppedIndex] !== null) {
+      if (droppedIndex === -1 || userInput[droppedIndex] !== null || closestDistance > 60) {
         resetPosition();
         return;
       }
@@ -196,17 +197,16 @@ export default function App() {
       const newInput = [...userInput];
       newInput[droppedIndex] = { letter, status: isCorrect ? 'correct' : 'wrong', keyboardIndex };
       setUserInput(newInput);
+      setUsedIndices(prev => [...prev, keyboardIndex]);
+      resetPosition(true); // Always instant reset to keyboard, unmounting hides it
       
       speakVoice(letter, 1.4, 1.0);
       
       if (isCorrect) {
-        setUsedIndices(prev => [...prev, keyboardIndex]);
-        // No resetPosition() needed, unmounting hides the animation
         playSuccessSound();
         setConsecutiveErrors(0);
         setIsProcessing(false);
       } else {
-        resetPosition(false); // Animate back on error
         playWrongSound();
         const newErrors = consecutiveErrors + 1;
         setConsecutiveErrors(newErrors);
@@ -400,14 +400,14 @@ const styles = StyleSheet.create({
   boxesContainer: {
     flexDirection: 'row',
     marginBottom: 50,
-    gap: 12,
+    gap: 10,
   },
   box: {
-    width: 70,
-    height: 70,
+    width: 60,
+    height: 65,
     borderWidth: 4,
     borderColor: '#D0E1F9',
-    borderRadius: 18,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -444,16 +444,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 15,
-    paddingHorizontal: 20,
+    gap: 10,
+    paddingHorizontal: 10,
   },
   key: {
-    width: 70,
-    height: 70,
+    width: 60,
+    height: 65,
     backgroundColor: '#FF9800',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 18,
+    borderRadius: 16,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
@@ -466,12 +466,12 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   deleteKey: {
-    width: 70,
-    height: 70,
+    width: 60,
+    height: 65,
     backgroundColor: '#F44336',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 18,
+    borderRadius: 16,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
