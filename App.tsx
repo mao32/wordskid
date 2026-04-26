@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Dimensions } from 'react-native';
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
 import { Volume2, Delete, Lightbulb } from 'lucide-react-native';
+import DraggableLetter from './DraggableLetter';
 
 const LEVELS = [
   { word: "GATTO", emoji: "🐱", syllables: ["GAT", "TO"] },
@@ -45,6 +46,22 @@ export default function App() {
   const [isWon, setIsWon] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  type Layout = { x: number; y: number; width: number; height: number };
+  const [boxLayouts, setBoxLayouts] = useState<Layout[]>([]);
+  const boxRefs = useRef<(View | null)[]>([]);
+
+  const handleBoxLayout = (index: number) => {
+    setTimeout(() => {
+      boxRefs.current[index]?.measure((x, y, width, height, pageX, pageY) => {
+        setBoxLayouts(prev => {
+          const newLayouts = [...prev];
+          newLayouts[index] = { x: pageX, y: pageY, width, height };
+          return newLayouts;
+        });
+      });
+    }, 100);
+  };
 
   const [soundSuccess, setSoundSuccess] = useState<Audio.Sound>();
   const [soundWrong, setSoundWrong] = useState<Audio.Sound>();
@@ -123,6 +140,7 @@ export default function App() {
     setIsProcessing(false);
     const letters = currentLevel.word.split('');
     setShuffledLetters(shuffleArray(letters));
+    setBoxLayouts([]);
     
     // Pronuncia la parola appena caricato il livello con entusiasmo
     speakVoice(currentLevel.word, 1.3, 0.85);
@@ -143,19 +161,42 @@ export default function App() {
     }
   };
 
-  const handleLetterPress = (letter: string) => {
+  const handleLetterDrop = (letter: string, moveX: number, moveY: number, resetPosition: () => void) => {
     if (userInput.length < currentLevel.word.length && !isWon && !isProcessing) {
+      
+      const expectedIndex = userInput.length;
+      const targetBox = boxLayouts[expectedIndex];
+      
+      let droppedInTarget = false;
+      if (targetBox) {
+        const padding = 30; // Lenient drop zone
+        if (
+          moveX >= targetBox.x - padding &&
+          moveX <= targetBox.x + targetBox.width + padding &&
+          moveY >= targetBox.y - padding &&
+          moveY <= targetBox.y + targetBox.height + padding
+        ) {
+          droppedInTarget = true;
+        }
+      }
+
+      if (!droppedInTarget) {
+        resetPosition();
+        return;
+      }
+
       setIsProcessing(true);
       const targetLetter = currentLevel.word[userInput.length];
       const isCorrect = letter === targetLetter;
       
-      const newInput = [...userInput, { letter, status: isCorrect ? 'correct' : 'wrong' as const }];
+      const newInput: UserInputData[] = [...userInput, { letter, status: isCorrect ? 'correct' : 'wrong' }];
       setUserInput(newInput);
       
       // Pronuncia sempre la lettera appena premuta
       speakVoice(letter, 1.4, 1.0);
       
       if (isCorrect) {
+        resetPosition(); // Reset since it "snaps" to the box (via state re-render)
         playSuccessSound();
         setConsecutiveErrors(0);
 
@@ -174,6 +215,7 @@ export default function App() {
         }
         setIsProcessing(false);
       } else {
+        resetPosition(); // Animates back on error
         playWrongSound();
         const newErrors = consecutiveErrors + 1;
         setConsecutiveErrors(newErrors);
@@ -260,6 +302,8 @@ export default function App() {
           return (
             <View 
               key={index} 
+              ref={(ref) => { boxRefs.current[index] = ref; }}
+              onLayout={() => handleBoxLayout(index)}
               style={[
                 styles.box, 
                 boxStateStyle,
@@ -279,14 +323,13 @@ export default function App() {
 
       <View style={styles.keyboard}>
         {shuffledLetters.map((letter, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.key} 
-            onPress={() => handleLetterPress(letter)}
+          <DraggableLetter
+            key={index}
+            letter={letter}
             disabled={isWon}
-          >
-            <Text style={styles.keyText}>{letter}</Text>
-          </TouchableOpacity>
+            onDragRelease={handleLetterDrop}
+            onPressIn={() => speakVoice(letter, 1.4, 1.0)}
+          />
         ))}
         
         <TouchableOpacity style={styles.deleteKey} onPress={handleDelete} disabled={isWon}>
