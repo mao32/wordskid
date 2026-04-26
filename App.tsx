@@ -200,12 +200,12 @@ export default function App() {
       setUsedIndices(prev => [...prev, keyboardIndex]);
       resetPosition(true); // Always instant reset to keyboard, unmounting hides it
       
-      speakVoice(letter, 1.4, 1.0);
-      
       if (isCorrect) {
         playSuccessSound();
         setConsecutiveErrors(0);
         setIsProcessing(false);
+        const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, droppedIndex);
+        speakVoice(syllable, 1.4, 0.7);
       } else {
         playWrongSound();
         const newErrors = consecutiveErrors + 1;
@@ -223,12 +223,16 @@ export default function App() {
               let correctIndex: number | undefined;
 
               setUsedIndices(u => {
-                const foundIdx = shuffledLetters.findIndex((l, idx) => l === targetLetter && !u.includes(idx));
+                let newU = [...u];
+                if (wrongItem && wrongItem.keyboardIndex !== undefined) {
+                  newU = newU.filter(i => i !== wrongItem.keyboardIndex);
+                }
+                const foundIdx = shuffledLetters.findIndex((l, idx) => l === targetLetter && !newU.includes(idx));
                 if (foundIdx !== -1) {
                   correctIndex = foundIdx;
-                  return [...u, foundIdx];
+                  newU.push(foundIdx);
                 }
-                return u;
+                return newU;
               });
 
               const copy = [...prev];
@@ -236,22 +240,13 @@ export default function App() {
               return copy;
             });
             playSuccessSound();
-            speakVoice(targetLetter, 1.4, 1.0);
+            const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, droppedIndex);
+            speakVoice(syllable, 1.4, 0.7);
             setConsecutiveErrors(0);
             setIsProcessing(false);
           }, 1800);
         } else {
-          setTimeout(() => {
-            setUserInput(prev => {
-              const copy = [...prev];
-              const wrongItem = copy[droppedIndex];
-              if (wrongItem && wrongItem.status === 'wrong') {
-                copy[droppedIndex] = null;
-              }
-              return copy;
-            });
-            setIsProcessing(false);
-          }, 1500);
+          setIsProcessing(false);
         }
       }
     } else {
@@ -264,7 +259,7 @@ export default function App() {
       const lastIndex = userInput.map((x, i) => x ? i : -1).filter(i => i !== -1).pop();
       if (lastIndex !== undefined) {
         const lastItem = userInput[lastIndex];
-        if (lastItem && lastItem.status === 'correct' && lastItem.keyboardIndex !== undefined) {
+        if (lastItem && lastItem.keyboardIndex !== undefined) {
           setUsedIndices(prev => prev.filter(i => i !== lastItem.keyboardIndex));
         }
         const copy = [...userInput];
