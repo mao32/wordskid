@@ -31,7 +31,7 @@ const getCurrentSyllable = (word: string, syllables: string[], currentIndex: num
     }
     lengthSoFar += syl.length;
   }
-  return word;
+  return word[currentIndex] || word;
 };
 
 type UserInputData = {
@@ -42,7 +42,7 @@ type UserInputData = {
 
 export default function App() {
   const [levelIndex, setLevelIndex] = useState(0);
-  const [userInput, setUserInput] = useState<UserInputData[]>([]);
+  const [userInput, setUserInput] = useState<(UserInputData | null)[]>([]);
   const [shuffledLetters, setShuffledLetters] = useState<string[]>([]);
   const [usedIndices, setUsedIndices] = useState<number[]>([]);
   const [isWon, setIsWon] = useState(false);
@@ -83,15 +83,11 @@ export default function App() {
 
   // Funzione unificata per la voce per garantire lo stesso tono
   const speakVoice = (text: string, pitch = 1.3, rate = 0.8) => {
-    // text.toLowerCase() evita che dica "A maiuscolo"
     Speech.speak(text.toLowerCase(), { language: 'it-IT', pitch, rate });
   };
 
-  // Scandisce lettera per lettera, poi parola intera, poi Bravissimo!
   const speakScandito = (word: string, finalMessage: string, onComplete: () => void) => {
     const letters = word.split('');
-    
-    // 1. Lettera per lettera in coda
     letters.forEach((letter) => {
       Speech.speak(letter.toLowerCase(), {
         language: 'it-IT',
@@ -100,35 +96,30 @@ export default function App() {
       });
     });
 
-    // Calcoliamo circa 600ms per ogni lettera pronunciata
     const spellDuration = letters.length * 600;
 
-    // 2. Pausa e parola intera
     setTimeout(() => {
       Speech.speak(word.toLowerCase(), { language: 'it-IT', pitch: 1.4, rate: 0.8 });
-    }, spellDuration + 600); // 600ms di pausa
+    }, spellDuration + 600);
 
-    // 3. Pausa e "Bravissimo!"
     setTimeout(() => {
       Speech.speak(finalMessage.toLowerCase(), { language: 'it-IT', pitch: 1.6, rate: 0.9 });
-    }, spellDuration + 2000); // Un'altra pausa
+    }, spellDuration + 2000);
 
-    // 4. Fine sequenza
     setTimeout(() => {
       onComplete();
     }, spellDuration + 4000);
   };
 
   const initLevel = useCallback(() => {
-    setUserInput([]);
+    const letters = currentLevel.word.split('');
+    setUserInput(new Array(letters.length).fill(null));
     setIsWon(false);
     setConsecutiveErrors(0);
     setIsProcessing(false);
-    const letters = currentLevel.word.split('');
     setShuffledLetters(shuffleArray(letters));
     setUsedIndices([]);
     
-    // Pronuncia la parola appena caricato il livello con entusiasmo
     speakVoice(currentLevel.word, 1.3, 0.85);
   }, [currentLevel]);
 
@@ -136,77 +127,97 @@ export default function App() {
     initLevel();
   }, [initLevel]);
 
+  // Controllo Vittoria
+  useEffect(() => {
+    if (userInput.length === currentLevel.word.length && userInput.every(x => x && x.status === 'correct')) {
+      if (!isWon) {
+        setIsWon(true);
+        setTimeout(() => {
+          speakScandito(currentLevel.word, 'Bravissimo!', () => {
+            if (levelIndex < LEVELS.length - 1) {
+              setLevelIndex(levelIndex + 1);
+            } else {
+              setLevelIndex(0);
+            }
+          });
+        }, 800);
+      }
+    }
+  }, [userInput, currentLevel.word, isWon, levelIndex]);
+
   const handleSpeak = () => {
     speakVoice(currentLevel.word, 1.3, 0.85);
   };
 
   const handleHint = () => {
-    if (userInput.length < currentLevel.word.length && !isWon) {
-      const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, userInput.length);
-      speakVoice(syllable, 1.4, 0.7); // Parla più lentamente per l'indizio
+    if (!isWon) {
+      const firstNullIndex = userInput.findIndex(x => x === null);
+      if (firstNullIndex !== -1) {
+        const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, firstNullIndex);
+        speakVoice(syllable, 1.4, 0.7);
+      }
     }
   };
 
   const handleLetterDrop = (letter: string, keyboardIndex: number, moveX: number, moveY: number, resetPosition: () => void) => {
-    if (userInput.length < currentLevel.word.length && !isWon && !isProcessing) {
-      
+    if (!isWon && !isProcessing) {
       const screenHeight = Dimensions.get('window').height;
-      // Consider a valid drop if dragged above the bottom 35% of the screen (i.e. into the upper area)
+      const screenWidth = Dimensions.get('window').width;
       const dropZoneBottom = screenHeight * 0.65;
       
       if (moveY > dropZoneBottom || moveY === 0) {
-        // Not dragged high enough, or tapped without moving (moveY is 0 initially)
+        resetPosition();
+        return;
+      }
+
+      const wordLen = currentLevel.word.length;
+      const totalWidth = wordLen * 60 + (wordLen - 1) * 12; // box: 60, gap: 12
+      const startX = (screenWidth - totalWidth) / 2;
+      
+      let droppedIndex = -1;
+      for (let i = 0; i < wordLen; i++) {
+        const boxLeft = startX + i * 72;
+        const boxRight = boxLeft + 60;
+        if (moveX >= boxLeft - 20 && moveX <= boxRight + 20) {
+          droppedIndex = i;
+          break;
+        }
+      }
+
+      if (droppedIndex === -1 || userInput[droppedIndex] !== null) {
         resetPosition();
         return;
       }
 
       setIsProcessing(true);
-      const targetLetter = currentLevel.word[userInput.length];
+      const targetLetter = currentLevel.word[droppedIndex];
       const isCorrect = letter === targetLetter;
       
-      const newInput: UserInputData[] = [...userInput, { letter, status: isCorrect ? 'correct' : 'wrong', keyboardIndex }];
+      const newInput = [...userInput];
+      newInput[droppedIndex] = { letter, status: isCorrect ? 'correct' : 'wrong', keyboardIndex };
       setUserInput(newInput);
       setUsedIndices(prev => [...prev, keyboardIndex]);
       
-      // Pronuncia sempre la lettera appena premuta
       speakVoice(letter, 1.4, 1.0);
       
       if (isCorrect) {
-        // No resetPosition() needed since it unmounts from keyboard
         playSuccessSound();
         setConsecutiveErrors(0);
-
-        // Controllo vittoria
-        if (newInput.length === currentLevel.word.length) {
-          setIsWon(true);
-          setTimeout(() => {
-            speakScandito(currentLevel.word, 'Bravissimo!', () => {
-              if (levelIndex < LEVELS.length - 1) {
-                setLevelIndex(levelIndex + 1);
-              } else {
-                setLevelIndex(0); // Ricomincia
-              }
-            });
-          }, 800); // Aspetta che finisca la pronuncia dell'ultima lettera inserita
-        }
         setIsProcessing(false);
       } else {
-        // No resetPosition() needed since it temporarily unmounts
         playWrongSound();
         const newErrors = consecutiveErrors + 1;
         setConsecutiveErrors(newErrors);
 
-        // Suggerisce la sillaba dopo un breve istante per far sentire la lettera e il buzzer
         setTimeout(() => {
-          const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, userInput.length);
+          const syllable = getCurrentSyllable(currentLevel.word, currentLevel.syllables, droppedIndex);
           speakVoice(syllable, 1.4, 0.7);
         }, 800);
 
         if (newErrors >= 3) {
-          // Dopo 3 errori, riempie in automatico la lettera corretta
           setTimeout(() => {
             setUserInput(prev => {
-              const wrongItem = prev[prev.length - 1];
+              const wrongItem = prev[droppedIndex];
               let correctIndex: number | undefined;
 
               setUsedIndices(u => {
@@ -223,55 +234,48 @@ export default function App() {
               });
 
               const copy = [...prev];
-              copy[copy.length - 1] = { letter: targetLetter, status: 'correct', keyboardIndex: correctIndex };
+              copy[droppedIndex] = { letter: targetLetter, status: 'correct', keyboardIndex: correctIndex };
               return copy;
             });
             playSuccessSound();
             speakVoice(targetLetter, 1.4, 1.0);
             setConsecutiveErrors(0);
-
-            // Controllo vittoria anche dopo l'autocompletamento
-            if (newInput.length === currentLevel.word.length) {
-              setIsWon(true);
-              setTimeout(() => {
-                speakScandito(currentLevel.word, 'Bravissimo!', () => {
-                  if (levelIndex < LEVELS.length - 1) {
-                    setLevelIndex(levelIndex + 1);
-                  } else {
-                    setLevelIndex(0);
-                  }
-                });
-              }, 800);
-            }
             setIsProcessing(false);
           }, 1800);
         } else {
-          // Rimuove la lettera sbagliata in automatico dopo 1.5 secondi
           setTimeout(() => {
             setUserInput(prev => {
-              if (prev.length > 0 && prev[prev.length - 1].status === 'wrong') {
-                const wrongItem = prev[prev.length - 1];
+              const copy = [...prev];
+              const wrongItem = copy[droppedIndex];
+              if (wrongItem && wrongItem.status === 'wrong') {
                 if (wrongItem.keyboardIndex !== undefined) {
                   setUsedIndices(u => u.filter(i => i !== wrongItem.keyboardIndex));
                 }
-                return prev.slice(0, -1);
+                copy[droppedIndex] = null;
               }
-              return prev;
+              return copy;
             });
             setIsProcessing(false);
           }, 1500);
         }
       }
+    } else {
+      resetPosition();
     }
   };
 
   const handleDelete = () => {
-    if (userInput.length > 0 && !isWon) {
-      const lastItem = userInput[userInput.length - 1];
-      if (lastItem.keyboardIndex !== undefined) {
-        setUsedIndices(prev => prev.filter(i => i !== lastItem.keyboardIndex));
+    if (!isWon && userInput.some(x => x !== null)) {
+      const lastIndex = userInput.map((x, i) => x ? i : -1).filter(i => i !== -1).pop();
+      if (lastIndex !== undefined) {
+        const lastItem = userInput[lastIndex];
+        if (lastItem && lastItem.keyboardIndex !== undefined) {
+          setUsedIndices(prev => prev.filter(i => i !== lastItem.keyboardIndex));
+        }
+        const copy = [...userInput];
+        copy[lastIndex] = null;
+        setUserInput(copy);
       }
-      setUserInput(userInput.slice(0, -1));
     }
   };
 
@@ -322,7 +326,6 @@ export default function App() {
       <View style={styles.keyboard}>
         {shuffledLetters.map((letter, index) => {
           if (usedIndices.includes(index)) {
-            // Invisible placeholder to keep keyboard layout stable
             return <View key={index} style={[styles.key, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]} />;
           }
 
