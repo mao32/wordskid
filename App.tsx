@@ -246,7 +246,20 @@ export default function App() {
             setIsProcessing(false);
           }, 1800);
         } else {
-          setIsProcessing(false);
+          setTimeout(() => {
+            setUserInput(prev => {
+              const copy = [...prev];
+              const wrongItem = copy[droppedIndex];
+              if (wrongItem && wrongItem.status === 'wrong') {
+                if (wrongItem.keyboardIndex !== undefined) {
+                  setUsedIndices(u => u.filter(i => i !== wrongItem.keyboardIndex));
+                }
+                copy[droppedIndex] = null;
+              }
+              return copy;
+            });
+            setIsProcessing(false);
+          }, 1500);
         }
       }
     } else {
