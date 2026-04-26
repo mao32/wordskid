@@ -37,12 +37,14 @@ const getCurrentSyllable = (word: string, syllables: string[], currentIndex: num
 type UserInputData = {
   letter: string;
   status: 'correct' | 'wrong' | 'pending';
+  keyboardIndex?: number;
 };
 
 export default function App() {
   const [levelIndex, setLevelIndex] = useState(0);
   const [userInput, setUserInput] = useState<UserInputData[]>([]);
   const [shuffledLetters, setShuffledLetters] = useState<string[]>([]);
+  const [usedIndices, setUsedIndices] = useState<number[]>([]);
   const [isWon, setIsWon] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -124,6 +126,7 @@ export default function App() {
     setIsProcessing(false);
     const letters = currentLevel.word.split('');
     setShuffledLetters(shuffleArray(letters));
+    setUsedIndices([]);
     
     // Pronuncia la parola appena caricato il livello con entusiasmo
     speakVoice(currentLevel.word, 1.3, 0.85);
@@ -144,7 +147,7 @@ export default function App() {
     }
   };
 
-  const handleLetterDrop = (letter: string, moveX: number, moveY: number, resetPosition: () => void) => {
+  const handleLetterDrop = (letter: string, keyboardIndex: number, moveX: number, moveY: number, resetPosition: () => void) => {
     if (userInput.length < currentLevel.word.length && !isWon && !isProcessing) {
       
       const screenHeight = Dimensions.get('window').height;
@@ -161,14 +164,15 @@ export default function App() {
       const targetLetter = currentLevel.word[userInput.length];
       const isCorrect = letter === targetLetter;
       
-      const newInput: UserInputData[] = [...userInput, { letter, status: isCorrect ? 'correct' : 'wrong' }];
+      const newInput: UserInputData[] = [...userInput, { letter, status: isCorrect ? 'correct' : 'wrong', keyboardIndex }];
       setUserInput(newInput);
+      setUsedIndices(prev => [...prev, keyboardIndex]);
       
       // Pronuncia sempre la lettera appena premuta
       speakVoice(letter, 1.4, 1.0);
       
       if (isCorrect) {
-        resetPosition(); // Reset since it "snaps" to the box (via state re-render)
+        // No resetPosition() needed since it unmounts from keyboard
         playSuccessSound();
         setConsecutiveErrors(0);
 
@@ -187,7 +191,7 @@ export default function App() {
         }
         setIsProcessing(false);
       } else {
-        resetPosition(); // Animates back on error
+        // No resetPosition() needed since it temporarily unmounts
         playWrongSound();
         const newErrors = consecutiveErrors + 1;
         setConsecutiveErrors(newErrors);
@@ -202,8 +206,24 @@ export default function App() {
           // Dopo 3 errori, riempie in automatico la lettera corretta
           setTimeout(() => {
             setUserInput(prev => {
+              const wrongItem = prev[prev.length - 1];
+              let correctIndex: number | undefined;
+
+              setUsedIndices(u => {
+                let newU = [...u];
+                if (wrongItem && wrongItem.keyboardIndex !== undefined) {
+                  newU = newU.filter(i => i !== wrongItem.keyboardIndex);
+                }
+                const foundIdx = shuffledLetters.findIndex((l, idx) => l === targetLetter && !newU.includes(idx));
+                if (foundIdx !== -1) {
+                  correctIndex = foundIdx;
+                  newU.push(foundIdx);
+                }
+                return newU;
+              });
+
               const copy = [...prev];
-              copy[copy.length - 1] = { letter: targetLetter, status: 'correct' };
+              copy[copy.length - 1] = { letter: targetLetter, status: 'correct', keyboardIndex: correctIndex };
               return copy;
             });
             playSuccessSound();
@@ -230,6 +250,10 @@ export default function App() {
           setTimeout(() => {
             setUserInput(prev => {
               if (prev.length > 0 && prev[prev.length - 1].status === 'wrong') {
+                const wrongItem = prev[prev.length - 1];
+                if (wrongItem.keyboardIndex !== undefined) {
+                  setUsedIndices(u => u.filter(i => i !== wrongItem.keyboardIndex));
+                }
                 return prev.slice(0, -1);
               }
               return prev;
@@ -243,6 +267,10 @@ export default function App() {
 
   const handleDelete = () => {
     if (userInput.length > 0 && !isWon) {
+      const lastItem = userInput[userInput.length - 1];
+      if (lastItem.keyboardIndex !== undefined) {
+        setUsedIndices(prev => prev.filter(i => i !== lastItem.keyboardIndex));
+      }
       setUserInput(userInput.slice(0, -1));
     }
   };
@@ -292,15 +320,22 @@ export default function App() {
       </View>
 
       <View style={styles.keyboard}>
-        {shuffledLetters.map((letter, index) => (
-          <DraggableLetter
-            key={index}
-            letter={letter}
-            disabled={isWon}
-            onDragRelease={handleLetterDrop}
-            onPressIn={() => speakVoice(letter, 1.4, 1.0)}
-          />
-        ))}
+        {shuffledLetters.map((letter, index) => {
+          if (usedIndices.includes(index)) {
+            // Invisible placeholder to keep keyboard layout stable
+            return <View key={index} style={[styles.key, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]} />;
+          }
+
+          return (
+            <DraggableLetter
+              key={index}
+              letter={letter}
+              disabled={isWon}
+              onDragRelease={(l, mx, my, reset) => handleLetterDrop(l, index, mx, my, reset)}
+              onPressIn={() => speakVoice(letter, 1.4, 1.0)}
+            />
+          );
+        })}
         
         <TouchableOpacity style={styles.deleteKey} onPress={handleDelete} disabled={isWon}>
           <Delete size={32} color="#fff" />
