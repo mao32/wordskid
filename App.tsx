@@ -44,6 +44,7 @@ export default function App() {
   const [levelIndex, setLevelIndex] = useState(0);
   const [userInput, setUserInput] = useState<(UserInputData | null)[]>([]);
   const [shuffledLetters, setShuffledLetters] = useState<string[]>([]);
+  const [usedIndices, setUsedIndices] = useState<number[]>([]);
   const [isWon, setIsWon] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -117,6 +118,7 @@ export default function App() {
     setConsecutiveErrors(0);
     setIsProcessing(false);
     setShuffledLetters(shuffleArray(letters));
+    setUsedIndices([]);
     
     speakVoice(currentLevel.word, 1.3, 0.85);
   }, [currentLevel]);
@@ -198,7 +200,8 @@ export default function App() {
       speakVoice(letter, 1.4, 1.0);
       
       if (isCorrect) {
-        resetPosition(true); // Instant reset to keyboard
+        setUsedIndices(prev => [...prev, keyboardIndex]);
+        // No resetPosition() needed, unmounting hides the animation
         playSuccessSound();
         setConsecutiveErrors(0);
         setIsProcessing(false);
@@ -217,10 +220,19 @@ export default function App() {
           setTimeout(() => {
             setUserInput(prev => {
               const wrongItem = prev[droppedIndex];
-              const correctIndex = shuffledLetters.findIndex((l, idx) => l === targetLetter);
+              let correctIndex: number | undefined;
+
+              setUsedIndices(u => {
+                const foundIdx = shuffledLetters.findIndex((l, idx) => l === targetLetter && !u.includes(idx));
+                if (foundIdx !== -1) {
+                  correctIndex = foundIdx;
+                  return [...u, foundIdx];
+                }
+                return u;
+              });
 
               const copy = [...prev];
-              copy[droppedIndex] = { letter: targetLetter, status: 'correct', keyboardIndex: correctIndex !== -1 ? correctIndex : undefined };
+              copy[droppedIndex] = { letter: targetLetter, status: 'correct', keyboardIndex: correctIndex };
               return copy;
             });
             playSuccessSound();
@@ -251,6 +263,10 @@ export default function App() {
     if (!isWon && userInput.some(x => x !== null)) {
       const lastIndex = userInput.map((x, i) => x ? i : -1).filter(i => i !== -1).pop();
       if (lastIndex !== undefined) {
+        const lastItem = userInput[lastIndex];
+        if (lastItem && lastItem.status === 'correct' && lastItem.keyboardIndex !== undefined) {
+          setUsedIndices(prev => prev.filter(i => i !== lastItem.keyboardIndex));
+        }
         const copy = [...userInput];
         copy[lastIndex] = null;
         setUserInput(copy);
@@ -304,6 +320,10 @@ export default function App() {
 
       <View style={styles.keyboard}>
         {shuffledLetters.map((letter, index) => {
+          if (usedIndices.includes(index)) {
+            return <View key={index} style={[styles.key, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]} />;
+          }
+
           return (
             <DraggableLetter
               key={index}
